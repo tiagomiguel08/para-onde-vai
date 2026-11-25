@@ -2,7 +2,7 @@
 
 Novidades: funciona sem internet, instala-se como aplicação, agenda da família,
 carros (abastecimentos e prazos), orçamentos, pesquisa, exportar para Excel,
-lista de compras e metas de poupança.
+lista de compras, metas de poupança e testes escolares (Mais → Testes escolares: visão geral, calendário do mês e filtro por Miguel, Matilde e Matias, com notas e média).
 
 ## Como atualizar o site
 1. Extraia este ZIP para uma pasta.

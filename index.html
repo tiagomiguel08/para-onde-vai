@@ -193,6 +193,13 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:1
 input.bud{width:86px;flex:none;min-height:40px;font-size:13px;text-align:right;font-family:var(--font-body);font-weight:500}
 .srch{margin:0 0 10px}
 .code{font-family:var(--font-display);letter-spacing:.04em}
+.tg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:6px 0 14px}
+.tg .h{font-size:11px;color:var(--muted);text-align:center;font-weight:600;padding:2px 0}
+.tgd{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-height:40px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;padding:4px 2px;font:inherit;font-size:13px;color:var(--fg);cursor:pointer;font-variant-numeric:tabular-nums}
+.tgd.today{border-color:var(--accent);color:var(--accent);font-weight:700}
+.tgd.has{background:var(--accent-soft)}
+.tgd .dots{display:flex;gap:3px;min-height:7px}
+.tgd .dots i{width:7px;height:7px;border-radius:50%;display:block}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 </body>
@@ -261,11 +268,11 @@ const DEFAULT_CFG={
 };
 const FREQS=[["monthly","Todos os meses"],["weekly","Todas as semanas"],["daily","Todos os dias"],["yearly","Todos os anos"]];
 const EREPEAT=[["none","Não repete"],["daily","Todos os dias"],["weekdays","Dias úteis (segunda a sexta)"],["weekly","Todas as semanas"],["monthly","Todos os meses"],["yearly","Todos os anos"]];
-const COLS=["expenses","recurring","events","cars","carlog","shopping","goals"];
+const COLS=["expenses","recurring","events","cars","carlog","shopping","goals","tests"];
 
-const st={db:null,fs:null,code:null,setup:null,d:{expenses:[],recurring:[],events:[],cars:[],carlog:[],shopping:[],goals:[]},
+const st={db:null,fs:null,code:null,setup:null,d:{expenses:[],recurring:[],events:[],cars:[],carlog:[],shopping:[],goals:[],tests:[]},
   config:null,loaded:{},timedOut:false,tab:"resumo",chartWho:"all",chartMode:"split",month:todayISO().slice(0,7),filter:"all",q:"",
-  weekStart:mondayOf(todayISO()),agWho:"all",agPay:false,carSel:null,installEv:null,choice:[],busy:false};
+  weekStart:mondayOf(todayISO()),agWho:"all",agPay:false,tsWho:"all",tsMonth:todayISO().slice(0,7),carSel:null,installEv:null,choice:[],busy:false};
 const D=n=>st.d[n];
 const cfg=()=>{const c=st.config;return (c&&Array.isArray(c.sections)&&c.sections.length&&Array.isArray(c.categories))?c:DEFAULT_CFG};
 const budgets=()=>cfg().budgets||{};
@@ -420,7 +427,7 @@ function viewResumo(){
   if(prev>0)h+='<p class="sub">'+esc(monthName(shiftMonth(key,-1)))+' fechou nos '+money(prev)+'.</p>';
   const withSpend=srows.filter(r=>r.v>0);
   if(withSpend.length&&spent>0)h+='<div class="stack" role="img" aria-label="Divisão do total por pessoa">'+withSpend.map(r=>'<span style="width:'+(r.v/spent*100).toFixed(2)+'%;background:'+r.color+'"></span>').join("")+'</div><div class="legend">'+withSpend.map(r=>'<span><i class="dot" style="background:'+r.color+'"></i>'+esc(r.name)+' <b>'+money(r.v)+'</b></span>').join("")+'</div>';
-  h+='</section>'+todayCard()+remindersCard()+chartCard();
+  h+='</section>'+todayCard()+testsCard()+remindersCard()+chartCard();
   const over=srows.concat(crows).filter(r=>r.budget&&r.v>r.budget);
   if(!cnt.length&&!srows.length)return h+'<div class="empty"><strong>Ainda nada anotado neste mês</strong>Toca no + para registar a primeira despesa, ou em Mais, Despesas fixas, para as contas que se repetem.</div>';
   if(over.length)h+='<div class="notice" style="margin-top:14px">Passou o orçamento: '+over.map(r=>esc(r.name)+' (+'+money(r.v-r.budget)+')').join(", ")+'.</div>';
@@ -534,10 +541,11 @@ function viewMetas(){
 /* ---------- mais ---------- */
 function viewMais(){
   const ic=p=>'<svg viewBox="0 0 24 24">'+p+'</svg>';
-  const shopN=D("shopping").filter(i=>!i.done).length,gN=D("goals").length,cN=D("cars").length,rN=D("recurring").filter(r=>r.active!==false).length;
+  const shopN=D("shopping").filter(i=>!i.done).length,gN=D("goals").length,cN=D("cars").length,rN=D("recurring").filter(r=>r.active!==false).length,tN=D("tests").filter(x=>x.date>=todayISO()).length;
   const mi=(go,icon,t,s)=>'<button class="mi" data-go="'+go+'">'+ic(icon)+'<b>'+t+'</b><span>'+s+'</span></button>';
   return '<div class="pagehead"><h2>Mais</h2></div><div class="menu">'+
     mi("fixas",'<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/>',"Despesas fixas",rN+" ativas")+
+    mi("testes",'<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11M9 8h6"/>',"Testes escolares",tN?tN+(tN>1?" por fazer":" por fazer"):"Miguel, Matilde, Matias")+
     mi("carros",'<path d="M5 16l1.5-5a2 2 0 0 1 1.9-1.4h7.2a2 2 0 0 1 1.9 1.4L19 16M4 16h16v3H4zM7 19v1.5M17 19v1.5"/><circle cx="8" cy="16" r=".6"/><circle cx="16" cy="16" r=".6"/>',"Carros",cN?cN+(cN>1?" carros":" carro"):"Abastecimentos e prazos")+
     mi("compras",'<path d="M4 5h2l2 11h10l2-8H7"/><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/>',"Lista de compras",shopN?shopN+" por comprar":"Tudo comprado")+
     mi("metas",'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8"/>',"Metas de poupança",gN?gN+(gN>1?" metas":" meta"):"Férias, fundo de emergência")+
@@ -573,8 +581,86 @@ function exportCsv(){
   setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Ficheiro exportado");
 }
 
+/* ---------- testes escolares ---------- */
+const TTYPES=["Teste","Ficha de avaliação","Exame","Trabalho","Apresentação","Outro"];
+const SUBJECTS=["Português","Matemática","Inglês","Francês","História","Geografia","Ciências Naturais","Físico-Química","Educação Visual","Educação Física","TIC","Estudo do Meio"];
+function students(){
+  const ids=["miguel","matilde","matias"].filter(id=>secIndex(id)>=0);
+  D("tests").forEach(t=>{if(t.person&&ids.indexOf(t.person)<0&&secIndex(t.person)>=0)ids.push(t.person)});
+  return ids.length?ids:cfg().sections.map(s=>s.id);
+}
+const testsOf=who=>D("tests").filter(t=>t.date&&(who==="all"||t.person===who)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:((a.time||"")<(b.time||"")?-1:1));
+const tLabel=n=>n<0?"há "+(-n)+" d":n===0?"hoje":n===1?"amanhã":"em "+n+" d";
+const gradeNum=g=>{const v=Number(String(g||"").replace(",",".").replace("%","").trim());return (String(g||"").trim()!==""&&isFinite(v))?v:null};
+function testAvg(list){const v=list.map(t=>gradeNum(t.grade)).filter(x=>x!=null);return v.length?{avg:v.reduce((a,b)=>a+b,0)/v.length,n:v.length}:null}
+function testRow(t,showWho){
+  const n=daysUntil(t.date),past=n<0;
+  const right=past?(t.grade?'<span class="a">'+esc(t.grade)+'</span>':'<span class="a" style="color:var(--muted);font-weight:500;font-size:12px">sem nota</span>'):'<span class="a" style="color:'+(n<=2?"var(--warn)":"inherit")+'">'+tLabel(n)+'</span>';
+  return '<button class="row'+(past?" plan":"")+'" data-test="'+esc(t.id)+'"><span class="tm">'+fmtDM(t.date)+'</span><span class="dot" style="background:'+secColor(t.person)+'"></span><span class="t"><span class="d">'+esc(t.subject)+(t.pending?'<span class="tag w">a enviar</span>':'')+'</span><br><span class="m">'+esc((showWho?secName(t.person)+" · ":"")+(t.type||"Teste")+(t.time?" · "+t.time:"")+(t.notes?" · "+t.notes:""))+'</span></span>'+right+'</button>';
+}
+function testGrid(key,who){
+  const all=testsOf(who),first=key+"-01",n=dim(parts(first).y,parts(first).m),t=todayISO();
+  let h='<div class="tg">'+["S","T","Q","Q","S","S","D"].map(x=>'<div class="h">'+x+'</div>').join("");
+  for(let i=0;i<dow(first);i++)h+='<span></span>';
+  for(let d=1;d<=n;d++){
+    const iso=key+"-"+pad(d),ts=all.filter(x=>x.date===iso),ppl=[];
+    ts.forEach(x=>{if(ppl.indexOf(x.person)<0)ppl.push(x.person)});
+    h+='<button class="tgd'+(iso===t?" today":"")+(ts.length?" has":"")+'" data-tsday="'+iso+'" aria-label="'+esc(longDay(iso)+(ts.length?", "+ts.length+" teste(s)":""))+'"><span>'+d+'</span><span class="dots">'+ppl.slice(0,3).map(p=>'<i style="background:'+secColor(p)+'"></i>').join("")+'</span></button>';
+  }
+  return h+'</div>';
+}
+function viewTestes(){
+  const who=st.tsWho,t=todayISO(),ids=students();
+  let h=subHead("Testes escolares");
+  h+='<div class="chips" role="group" aria-label="Filtrar por aluno"><button class="chip" data-tswho="all" aria-pressed="'+(who==="all")+'">Visão geral</button>'+ids.map(id=>'<button class="chip" data-tswho="'+esc(id)+'" aria-pressed="'+(who===id)+'"><i class="dot" style="display:inline-block;margin-right:6px;background:'+secColor(id)+'"></i>'+esc(secName(id))+'</button>').join("")+'</div>';
+  if(who==="all"){
+    h+='<div class="tiles">'+ids.map(id=>{
+      const l=testsOf(id),up=l.filter(x=>x.date>=t),dn=l.filter(x=>x.date<t),nx=up[0],av=testAvg(dn);
+      return '<button class="tile" style="text-align:left;font:inherit;color:inherit;cursor:pointer;border-left:4px solid '+secColor(id)+'" data-tswho="'+esc(id)+'"><div class="l">'+esc(secName(id))+'</div><div class="v" style="font-size:17px">'+(nx?esc(nx.subject):"Sem testes")+'</div><div class="l">'+(nx?fmtDM(nx.date)+" · "+tLabel(daysUntil(nx.date)):"nada marcado")+'</div><div class="l" style="margin-top:6px">'+up.length+' por fazer'+(av?' · média '+nf(av.avg,1):"")+'</div></button>';
+    }).join("")+'</div>';
+  }
+  h+='<div class="weeknav"><button class="iconbtn" data-tsm="-1" aria-label="Mês anterior"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button><div class="m">'+esc(monthLabel(st.tsMonth))+'</div><button class="iconbtn" data-tsm="1" aria-label="Mês seguinte"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button><button class="btn sm" data-tsm="0">Hoje</button></div>'+testGrid(st.tsMonth,who);
+  const list=testsOf(who),up=list.filter(x=>x.date>=t),dn=list.filter(x=>x.date<t).reverse();
+  h+='<h2>Próximos</h2>'+(up.length?'<div class="rows">'+up.slice(0,who==="all"?10:50).map(x=>testRow(x,who==="all")).join("")+'</div>':'<div class="nod">Nada marcado. Toque no + para adicionar um teste.</div>');
+  if(dn.length){
+    const av=testAvg(dn);
+    h+='<h2>Já feitos'+(av?' <span class="tag">média '+nf(av.avg,1)+' em '+av.n+'</span>':'')+'</h2><div class="rows">'+dn.slice(0,who==="all"?8:60).map(x=>testRow(x,who==="all")).join("")+'</div><p class="info">Toque num teste feito para lhe pôr a nota.</p>';
+  }
+  return h;
+}
+function testsCard(){
+  const l=testsOf("all").filter(x=>{const n=daysUntil(x.date);return n>=0&&n<=7});
+  if(!l.length)return "";
+  return '<h2>Testes nos próximos 7 dias</h2><div class="rows">'+l.slice(0,5).map(x=>testRow(x,true)).join("")+'</div>';
+}
+function openTest(t,preset){
+  preset=preset||{};
+  const ids=students();
+  showSheet({title:t?"Editar teste":"Novo teste",
+    fields:[{k:"subject",l:"Disciplina",t:"text",v:t?t.subject:"",p:"ex.: Matemática",list:SUBJECTS},
+      {k:"person",l:"De quem",t:"select",o:ids.map(id=>[id,secName(id)]),v:t?t.person:(preset.person||lastUsed().tp||ids[0])},
+      [{k:"date",l:"Data",t:"date",v:t?t.date:(preset.date||todayISO())},{k:"time",l:"Hora (opcional)",t:"time",v:t?t.time||"":""}],
+      {k:"type",l:"Tipo",t:"select",o:TTYPES.map(x=>[x,x]),v:t?t.type||"Teste":"Teste"},
+      {k:"notes",l:"O que sai (opcional)",t:"area",v:t?t.notes||"":"",p:"ex.: capítulos 3 e 4, levar calculadora"},
+      {k:"grade",l:"Nota (depois do teste)",t:"text",v:t?t.grade||"":"",p:"ex.: 4, 16 ou 85%"}],
+    onDelete:t?()=>{st.db.collection("tests").doc(t.id).delete().catch(wfail);toast("Apagado")}:null,
+    onSave:v=>{
+      if(!v.subject)return "Escreva a disciplina.";
+      if(!v.date)return "Indique a data.";
+      const ref=t?st.db.collection("tests").doc(t.id):st.db.collection("tests").doc();
+      ref.set({subject:v.subject,person:v.person,date:v.date,time:v.time,type:v.type,notes:v.notes,grade:v.grade,createdAt:t&&t.createdAt||Date.now()}).catch(wfail);
+      setLast({tp:v.person});toast("Guardado");return null;
+    }});
+}
+function onTestDay(iso){
+  const who=st.tsWho,l=testsOf(who).filter(x=>x.date===iso);
+  const preset={date:iso,person:who==="all"?null:who};
+  if(!l.length){openTest(null,preset);return}
+  showChoice(longDay(iso),l.map(x=>({label:secName(x.person)+": "+x.subject,fn:()=>openTest(x)})).concat([{label:"Novo teste neste dia",cls:"pri",fn:()=>openTest(null,preset)}]));
+}
+
 /* ---------- ecrã principal ---------- */
-const SUB=["fixas","carros","compras","metas","defs"];
+const SUB=["fixas","carros","compras","metas","testes","defs"];
 function statusBar(){
   const n=pendingCount();
   if(!navigator.onLine)return '<div class="status off">Sem internet. Pode continuar a anotar: fica guardado no telemóvel e é enviado quando houver rede.'+(n?' ('+n+' por enviar)':'')+'</div>';
@@ -594,7 +680,7 @@ function render(){
   let pre=statusBar();
   if(!st.db)pre+='<div class="notice">Sem ligação à base de dados. Verifique a internet e o ficheiro config.js.</div>';
   if(st.db&&!coreLoaded()){v.innerHTML=pre+'<div class="empty"><strong>'+(st.timedOut?"Sem resposta dos dados":"A carregar…")+'</strong>'+(st.timedOut?"Verifique a ligação à internet. Os dados aparecem assim que a ligação voltar.":"")+'</div>';return}
-  const views={resumo:viewResumo,despesas:viewDespesas,agenda:viewAgenda,mais:viewMais,fixas:viewFixas,carros:viewCarros,compras:viewCompras,metas:viewMetas,defs:viewDefs};
+  const views={resumo:viewResumo,despesas:viewDespesas,agenda:viewAgenda,mais:viewMais,fixas:viewFixas,carros:viewCarros,compras:viewCompras,metas:viewMetas,testes:viewTestes,defs:viewDefs};
   v.innerHTML=pre+(views[st.tab]||viewResumo)();
 }
 function renderSoft(){const a=document.activeElement;if(a&&a.closest&&a.closest("#view")&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"))return;render()}
@@ -855,6 +941,7 @@ const fabAction=()=>{
     case "carros":openFuel(selCar());break;
     case "compras":{const i=$("#sh-in");if(i)i.focus();break}
     case "metas":openGoal(null);break;
+    case "testes":openTest(null,{person:st.tsWho==="all"?null:st.tsWho});break;
     case "fixas":openForm("r",null);break;
     default:openForm("e",null);
   }
@@ -883,6 +970,10 @@ document.addEventListener("click",e=>{
   if(ds.cwho){st.chartWho=ds.cwho;render();return}
   if(ds.cmode){st.chartMode=ds.cmode;render();return}
   if(ds.wk!=null){const n=+ds.wk;st.weekStart=n===0?mondayOf(todayISO()):addDays(st.weekStart,7*n);render();return}
+  if(ds.tswho){st.tsWho=ds.tswho;render();return}
+  if(ds.tsm!=null){const n=+ds.tsm;st.tsMonth=n===0?todayISO().slice(0,7):shiftMonth(st.tsMonth,n);render();return}
+  if(ds.tsday){onTestDay(ds.tsday);return}
+  if(ds.test){const x=D("tests").find(y=>y.id===ds.test);if(x)openTest(x);return}
   if(ds.agwho){st.agWho=ds.agwho;render();return}
   if(ds.agpay){st.agPay=!st.agPay;render();return}
   if(ds.ev){onEv(ds.ev,ds.d);return}
