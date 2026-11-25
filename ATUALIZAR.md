@@ -16,3 +16,6 @@ Os dados não se perdem: ficam na base de dados do Firebase. As regras do Firest
 ## Para abrir sem internet
 Abra a aplicação uma vez com internet depois de atualizar. A partir daí abre sem rede, e o que anotar sem rede é enviado sozinho quando houver internet.
 Se o telemóvel mostrar «Instalar aplicação» (Android, Chrome), aceite.
+
+## Adicionar ao calendário do telemóvel
+Abra um evento da Agenda ou um teste escolar já guardado e toque em «Adicionar ao meu calendário». Escolha quanto tempo antes quer o aviso e abra o ficheiro no Calendário (iPhone) ou no Google Calendar (Android). A repetição semanal vai incluída.

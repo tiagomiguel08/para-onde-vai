@@ -643,6 +643,7 @@ function openTest(t,preset){
       {k:"type",l:"Tipo",t:"select",o:TTYPES.map(x=>[x,x]),v:t?t.type||"Teste":"Teste"},
       {k:"notes",l:"O que sai (opcional)",t:"area",v:t?t.notes||"":"",p:"ex.: capítulos 3 e 4, levar calculadora"},
       {k:"grade",l:"Nota (depois do teste)",t:"text",v:t?t.grade||"":"",p:"ex.: 4, 16 ou 85%"}],
+    extra:t?{label:"Adicionar ao meu calendário",fn:()=>addTestToCalendar(t)}:null,
     onDelete:t?()=>{st.db.collection("tests").doc(t.id).delete().catch(wfail);toast("Apagado")}:null,
     onSave:v=>{
       if(!v.subject)return "Escreva a disciplina.";
@@ -657,6 +658,48 @@ function onTestDay(iso){
   const preset={date:iso,person:who==="all"?null:who};
   if(!l.length){openTest(null,preset);return}
   showChoice(longDay(iso),l.map(x=>({label:secName(x.person)+": "+x.subject,fn:()=>openTest(x)})).concat([{label:"Novo teste neste dia",cls:"pri",fn:()=>openTest(null,preset)}]));
+}
+
+/* ---------- adicionar ao calendário do telemóvel (.ics) ---------- */
+const icsEsc=s=>String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n");
+const icsFold=l=>{let o="";while(l.length>73){o+=l.slice(0,73)+"\r\n ";l=l.slice(73)}return o+l};
+const icsD=iso=>iso.replace(/-/g,"");
+const icsDT=(iso,t)=>icsD(iso)+"T"+t.replace(":","")+"00";
+function icsPlus1h(t){const a=t.split(":").map(Number),m=a[0]*60+a[1]+60;return m>=1440?"23:59":pad(Math.floor(m/60))+":"+pad(m%60)}
+function icsVevent(o){
+  const L=["BEGIN:VEVENT","UID:"+o.uid+"@paraondevai","DTSTAMP:"+new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,""),"SUMMARY:"+icsEsc(o.title)];
+  let start=o.date;
+  if(o.repeat==="weekdays")while(dow(start)>=5)start=addDays(start,1);
+  if(o.time){
+    const e=(o.end&&o.end>o.time)?o.end:icsPlus1h(o.time);
+    L.push("DTSTART:"+icsDT(start,o.time),"DTEND:"+icsDT(start,e));
+  }else L.push("DTSTART;VALUE=DATE:"+icsD(start),"DTEND;VALUE=DATE:"+icsD(addDays(start,1)));
+  if(o.notes)L.push("DESCRIPTION:"+icsEsc(o.notes));
+  const R={daily:"FREQ=DAILY",weekdays:"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",weekly:"FREQ=WEEKLY",monthly:"FREQ=MONTHLY",yearly:"FREQ=YEARLY"}[o.repeat];
+  if(R){
+    L.push("RRULE:"+R+(o.until?";UNTIL="+icsD(o.until)+(o.time?"T235959":""):""));
+    (o.skips||[]).filter(s=>s>=start).forEach(s=>L.push(o.time?"EXDATE:"+icsDT(s,o.time):"EXDATE;VALUE=DATE:"+icsD(s)));
+  }
+  (o.alarms||[]).forEach(a=>L.push("BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+icsEsc(o.title),"TRIGGER:"+a,"END:VALARM"));
+  L.push("END:VEVENT");return L;
+}
+function icsDeliver(name,events){
+  const text=[["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Para Onde Vai//PT","CALSCALE:GREGORIAN","METHOD:PUBLISH"]].concat(events,[["END:VCALENDAR"]]).reduce((x,y)=>x.concat(y),[]).map(icsFold).join("\r\n")+"\r\n";
+  const dl=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/calendar;charset=utf-8"}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Abra o ficheiro para o juntar ao calendário")};
+  try{
+    const f=new File([text],name,{type:"text/calendar"});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:name}).catch(e=>{if(!e||e.name!=="AbortError")dl()});return}
+  }catch(x){}
+  dl();
+}
+const evTitleFull=ev=>ev.title+(ev.person&&ev.person!=="todos"?" ("+secName(ev.person)+")":"");
+function addEventToCalendar(ev){
+  const mk=al=>icsDeliver("evento.ics",[icsVevent({uid:ev.id,title:evTitleFull(ev),date:ev.date,time:ev.time,end:ev.end,repeat:ev.repeat,until:ev.until,skips:ev.skips,notes:ev.notes,alarms:al})]);
+  if(!ev.time){mk(["-PT6H","PT8H"]);return}
+  showChoice("Avisar quanto tempo antes?",[["15 minutos","-PT15M"],["30 minutos","-PT30M"],["1 hora","-PT1H"],["2 horas","-PT2H"],["1 dia","-P1D"]].map(x=>({label:x[0],fn:()=>mk([x[1]])})));
+}
+function addTestToCalendar(t){
+  icsDeliver("teste.ics",[icsVevent({uid:t.id,title:t.type&&t.type!=="Teste"?t.type+" de "+t.subject+" ("+secName(t.person)+")":"Teste de "+t.subject+" ("+secName(t.person)+")",date:t.date,time:t.time,repeat:"none",notes:t.notes,alarms:t.time?["-P1D","-PT1H"]:["-PT6H","PT8H"]})]);
 }
 
 /* ---------- ecrã principal ---------- */
@@ -707,6 +750,8 @@ function showSheet(o){
     if(Array.isArray(f)){h+='<div class="row2">'+f.map(x=>{keys.push(x);return '<div>'+fieldHtml(x)+'</div>'}).join("")+'</div>'}
     else{keys.push(f);h+=fieldHtml(f)}
   });
+  st.extra=o.extra||null;
+  if(o.extra)h+='<div class="btnrow" style="margin:6px 0 2px"><button type="button" class="btn" id="f-extra">'+esc(o.extra.label)+'</button></div>';
   h+='<p class="err" id="f-err" role="alert"></p><div class="actions">'+(o.onDelete?'<button type="button" class="btn danger" id="f-del">'+esc(o.deleteLabel||"Apagar")+'</button>':"")+'<span class="grow"></span><button type="button" class="btn" id="f-cancel">Cancelar</button><button type="submit" class="btn pri" id="f-save">Guardar</button></div></form>';
   $("#sheet").innerHTML=h;$("#back").hidden=false;
   $("#form").addEventListener("submit",e=>{
@@ -812,6 +857,7 @@ function openEvent(ev,opt){
       {k:"repeat",l:"Repete",t:"select",o:EREPEAT,v:base.repeat||"none"},
       {k:"until",l:"Repete até (opcional)",t:"date",v:base.until||""},
       {k:"notes",l:"Notas (opcional)",t:"area",v:base.notes||"",p:"ex.: levar a mochila do ginásio"}],
+    extra:(ev&&!single)?{label:"Adicionar ao meu calendário",fn:()=>addEventToCalendar(ev)}:null,
     onDelete:(ev&&!single)?()=>{st.db.collection("events").doc(ev.id).delete().catch(wfail);toast("Apagado")}:null,
     onSave:v=>{
       if(!v.title)return "Escreva o que é.";
@@ -832,6 +878,7 @@ function onEv(id,iso){
   if(ev.repeat&&ev.repeat!=="none")showChoice(ev.title+" · "+longDay(iso),[
     {label:"Mudar só neste dia",fn:()=>openEvent(ev,{single:iso})},
     {label:"Cancelar só neste dia",fn:()=>{st.db.collection("events").doc(ev.id).update({skips:(ev.skips||[]).concat([iso])}).catch(wfail);toast("Dia cancelado")}},
+    {label:"Adicionar ao meu calendário",fn:()=>addEventToCalendar(ev)},
     {label:"Editar todos (ou apagar)",fn:()=>openEvent(ev)}]);
   else openEvent(ev);
 }
@@ -958,6 +1005,7 @@ document.addEventListener("click",e=>{
   const ds=t.dataset;
   if(ds.ch!=null){const b=st.choice[+ds.ch];closeForm();if(b)b.fn();return}
   if(t.id==="f-cancel"){closeForm();return}
+  if(t.id==="f-extra"){const ex=st.extra;closeForm();if(ex)ex.fn();return}
   if(t.id==="fab"){fabAction();return}
   if(t.id==="code-new"){$("#code-in").value=randCode();return}
   if(t.id==="code-go"){const cc=$("#code-in").value.trim();if(!/^[A-Za-z0-9_-]{8,64}$/.test(cc)){toast("O código tem de ter 8 a 64 letras ou números");return}try{localStorage.setItem("pov-code",cc)}catch(x){}location.hash="c="+cc;location.reload();return}
