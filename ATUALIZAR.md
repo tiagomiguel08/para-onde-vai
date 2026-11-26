@@ -19,3 +19,9 @@ Se o telemóvel mostrar «Instalar aplicação» (Android, Chrome), aceite.
 
 ## Adicionar ao calendário do telemóvel
 Abra um evento da Agenda ou um teste escolar já guardado e toque em «Adicionar ao meu calendário». Escolha quanto tempo antes quer o aviso e abra o ficheiro no Calendário (iPhone) ou no Google Calendar (Android). A repetição semanal vai incluída.
+
+## Versão 4
+- Agenda com vistas Dia, Semana e Mês.
+- Lista de compras: botão × para remover um item.
+- Resumo: gráfico de linhas do mês (Linhas · mês), um traço por pessoa, a subir ao longo dos dias.
+- Lembretes dos carros: opção «Repete todos os anos» e botão para adicionar ao calendário.

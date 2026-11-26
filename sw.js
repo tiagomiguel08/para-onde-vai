@@ -1,5 +1,5 @@
 // Guarda a aplicação no telemóvel para abrir sem internet.
-const V = "pov-v3b";
+const V = "pov-v4";
 const CORE = ["./", "index.html", "config.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 const CDN = [
   "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js",

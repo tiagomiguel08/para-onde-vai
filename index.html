@@ -200,6 +200,11 @@ input.bud{width:86px;flex:none;min-height:40px;font-size:13px;text-align:right;f
 .tgd.has{background:var(--accent-soft)}
 .tgd .dots{display:flex;gap:3px;min-height:7px}
 .tgd .dots i{width:7px;height:7px;border-radius:50%;display:block}
+.shopw{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.shopw:last-child{border-bottom:0}
+.shopw .shop{flex:1;min-width:0;border-bottom:0}
+.shdel{flex:none;width:44px;height:44px;border:0;background:transparent;color:var(--muted);font-size:22px;cursor:pointer}
+.shdel:hover{color:var(--warn)}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 </body>
@@ -272,7 +277,7 @@ const COLS=["expenses","recurring","events","cars","carlog","shopping","goals","
 
 const st={db:null,fs:null,code:null,setup:null,d:{expenses:[],recurring:[],events:[],cars:[],carlog:[],shopping:[],goals:[],tests:[]},
   config:null,loaded:{},timedOut:false,tab:"resumo",chartWho:"all",chartMode:"split",month:todayISO().slice(0,7),filter:"all",q:"",
-  weekStart:mondayOf(todayISO()),agWho:"all",agPay:false,tsWho:"all",tsMonth:todayISO().slice(0,7),carSel:null,installEv:null,choice:[],busy:false};
+  weekStart:mondayOf(todayISO()),agWho:"all",agPay:false,tsWho:"all",agView:"week",agDay:todayISO(),agMonth:todayISO().slice(0,7),chartType:"bars",tsMonth:todayISO().slice(0,7),carSel:null,installEv:null,choice:[],busy:false};
 const D=n=>st.d[n];
 const cfg=()=>{const c=st.config;return (c&&Array.isArray(c.sections)&&c.sections.length&&Array.isArray(c.categories))?c:DEFAULT_CFG};
 const budgets=()=>cfg().budgets||{};
@@ -352,6 +357,13 @@ function evOccurs(ev,iso){
 }
 const dayEvents=(iso,who)=>D("events").filter(ev=>evOccurs(ev,iso)&&(!who||who==="all"||ev.person===who||ev.person==="todos")).sort((a,b)=>(a.time||"")<(b.time||"")?-1:(a.time||"")>(b.time||"")?1:0);
 
+/* lembretes de carros: datas anuais avançam sozinhas */
+function remDate(r){
+  if(!r.yearly)return r.date;
+  const p=parts(r.date),t=todayISO();let y=p.y,iso=r.date;
+  while(iso<t&&y<p.y+60){y++;iso=y+"-"+pad(p.m)+"-"+pad(Math.min(p.d,dim(y,p.m)))}
+  return iso;
+}
 /* carros */
 const unitOf=car=>car&&car.fuel==="Elétrico"?"kWh":"L";
 function carCons(car){
@@ -374,7 +386,33 @@ function barList(rows,total){
     return '<div class="bar-row"><div class="bar-head"><span class="n">'+esc(r.name)+'</span><span class="v">'+val+'</span></div><div class="track"><div class="fill" style="width:'+pct.toFixed(1)+'%;background:'+(over?'var(--warn)':r.color)+'"></div></div></div>';
   }).join("")+'</div>';
 }
+function lineChart(key,who,joint){
+  const pp=parts(key+"-01"),n=dim(pp.y,pp.m),t=todayISO(),cur=key===t.slice(0,7);
+  const last=(!cur)?n:parts(t).d;
+  const items=counted(monthItems(key),key).filter(i=>who==="all"||i.section===who);
+  const ids=(joint||who!=="all")?[who==="all"?"_all":who]:cfg().sections.map(s=>s.id);
+  const series=ids.map(id=>{
+    const inc=new Array(n+2).fill(0);
+    items.forEach(i=>{if(id==="_all"||i.section===id)inc[parts(i.date).d]+=i.cents});
+    const cum=[0];let a=0;for(let d=1;d<=n;d++){a+=inc[d];cum.push(a)}
+    return {id,cum,total:cum[last],color:id==="_all"?"var(--accent)":secColor(id),name:id==="_all"?"Todos":secName(id)};
+  }).filter(s=>s.total>0);
+  if(!series.length)return '<div class="card" style="padding:14px 16px"><p class="info" style="margin:0">Ainda não há gastos neste mês.</p></div>';
+  const W=320,H=200,L=44,R=12,T=14,B=26,pw=W-L-R,ph=H-T-B;
+  const ymax=Math.max.apply(null,series.map(s=>s.total))*1.08;
+  const X=d=>L+(d-1)/(n-1)*pw,Y=v=>T+ph*(1-v/ymax);
+  let svg="";
+  [0,0.5,1].forEach(f=>{const v=ymax/1.08*f,y=Y(v);svg+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" style="stroke:var(--line)"/><text x="'+(L-6)+'" y="'+(y+3.5).toFixed(1)+'" text-anchor="end" font-size="10" style="fill:var(--muted)">'+esc(eur0.format(v/100))+'</text>'});
+  [1,5,10,15,20,25,n].filter((d,i,a)=>a.indexOf(d)===i&&(d===n||n-d>=3)).forEach(d=>{svg+='<text x="'+X(d).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" style="fill:var(--muted)">'+d+'</text>'});
+  if(cur)svg+='<line x1="'+X(last).toFixed(1)+'" x2="'+X(last).toFixed(1)+'" y1="'+T+'" y2="'+(T+ph)+'" stroke-dasharray="3 3" style="stroke:var(--line)"/>';
+  series.forEach(s=>{
+    let p="";for(let d=1;d<=last;d++)p+=(d===1?"M":"L")+X(d).toFixed(1)+" "+Y(s.cum[d]).toFixed(1);
+    svg+='<path d="'+p+'" fill="none" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" style="stroke:'+s.color+'"/><circle cx="'+X(last).toFixed(1)+'" cy="'+Y(s.total).toFixed(1)+'" r="3.5" style="fill:'+s.color+'"/>';
+  });
+  return '<div class="card" style="padding:12px 10px"><svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Gasto acumulado ao longo do mês" style="display:block">'+svg+'</svg><div class="legend" style="padding:6px 6px 2px">'+series.map(s=>'<span><i class="dot" style="background:'+s.color+'"></i>'+esc(s.name)+' <b>'+money(s.total)+'</b></span>').join("")+'</div></div><p class="info" style="margin-top:8px">Cada linha sobe com o que a pessoa gasta ao longo dos dias. Muda de mês nas setas lá em cima.</p>';
+}
 function chartCard(){
+  const lines=st.chartType==="lines";
   const keys=[];for(let i=5;i>=0;i--)keys.push(shiftMonth(st.month,-i));
   const secs=cfg().sections;let who=st.chartWho;
   if(who!=="all"&&secIndex(who)<0)who="all";
@@ -392,9 +430,10 @@ function chartCard(){
     const pp=parts(d.key+"-01");const mn=new Date(pp.y,pp.m-1,1).toLocaleDateString("pt-PT",{month:"short"}).replace(".","");
     svg+='<text x="'+(idx*slot+slot/2).toFixed(1)+'" y="'+(H-7)+'" text-anchor="middle" font-size="11" style="fill:'+(sel?"var(--fg)":"var(--muted)")+';font-weight:'+(sel?700:400)+';pointer-events:none">'+esc(mn)+'</text>';
   });
-  let h='<h2>Evolução em 6 meses</h2><div class="chips" role="group" aria-label="Escolher pessoa"><button class="chip" data-cwho="all" aria-pressed="'+(who==="all")+'">Todos</button>'+
+  let h='<h2>'+(lines?"Gastos em "+esc(monthName(st.month)):"Evolução em 6 meses")+'</h2><div class="chips" role="group" aria-label="Tipo de gráfico"><button class="chip" data-ctype="bars" aria-pressed="'+!lines+'">Barras · 6 meses</button><button class="chip" data-ctype="lines" aria-pressed="'+lines+'">Linhas · mês</button></div><div class="chips" role="group" aria-label="Escolher pessoa"><button class="chip" data-cwho="all" aria-pressed="'+(who==="all")+'">Todos</button>'+
     secs.map(s=>'<button class="chip" data-cwho="'+esc(s.id)+'" aria-pressed="'+(who===s.id)+'"><i class="dot" style="display:inline-block;margin-right:6px;background:'+secColor(s.id)+'"></i>'+esc(s.name)+'</button>').join("")+'</div>';
   if(who==="all")h+='<div class="chips" role="group" aria-label="Modo"><button class="chip" data-cmode="split" aria-pressed="'+(!joint)+'">Por pessoa</button><button class="chip" data-cmode="joint" aria-pressed="'+joint+'">Tudo junto</button></div>';
+  if(lines)return h+lineChart(st.month,who,joint);
   return h+'<div class="card" style="padding:12px 10px"><svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Gastos dos últimos 6 meses" style="display:block">'+svg+'</svg></div><p class="info" style="margin-top:8px">Toca num mês para o abrir.</p>';
 }
 function evRow(ev,iso){
@@ -408,7 +447,7 @@ function todayCard(){
 }
 function remindersDue(){
   const out=[];
-  D("cars").forEach(c=>(c.reminders||[]).forEach(r=>{const n=daysUntil(r.date);if(n<=30)out.push({car:c,label:r.label,date:r.date,n})}));
+  D("cars").forEach(c=>(c.reminders||[]).forEach(r=>{const d=remDate(r),n=daysUntil(d);if(n<=30)out.push({car:c,label:r.label,date:d,n})}));
   return out.sort((a,b)=>a.n-b.n);
 }
 function remindersCard(){
@@ -473,18 +512,42 @@ function viewFixas(){
 }
 
 /* ---------- agenda ---------- */
-function viewAgenda(){
-  const ws=st.weekStart,we=addDays(ws,6),who=st.agWho,t=todayISO();
-  let h='<div class="weeknav"><button class="iconbtn" data-wk="-1" aria-label="Semana anterior"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button><div class="m">'+fmtDM(ws)+' a '+fmtDM(we)+'</div><button class="iconbtn" data-wk="1" aria-label="Semana seguinte"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button><button class="btn sm" data-wk="0">Hoje</button></div>';
-  h+='<div class="chips" role="group" aria-label="Filtrar por pessoa"><button class="chip" data-agwho="all" aria-pressed="'+(who==="all")+'">Todos</button>'+cfg().sections.map(s=>'<button class="chip" data-agwho="'+esc(s.id)+'" aria-pressed="'+(who===s.id)+'"><i class="dot" style="display:inline-block;margin-right:6px;background:'+secColor(s.id)+'"></i>'+esc(s.name)+'</button>').join("")+'<button class="chip" data-agpay="1" aria-pressed="'+st.agPay+'">Pagamentos €</button></div>';
-  const pay={};
-  if(st.agPay){const ks=[ws.slice(0,7),we.slice(0,7)].filter((k,i,a)=>a.indexOf(k)===i);D("recurring").forEach(r=>ks.forEach(k=>occ(r,k).forEach(d=>{if(d>=ws&&d<=we)(pay[d]=pay[d]||[]).push(r)})))}
-  for(let i=0;i<7;i++){
-    const iso=addDays(ws,i),evs=dayEvents(iso,who),pr=pay[iso]||[];
-    h+='<div class="dayh'+(iso===t?" today":"")+'"><span>'+esc(longDay(iso))+'</span>'+(iso===t?'<span class="tag">hoje</span>':'')+'</div>';
-    if(!evs.length&&!pr.length)h+='<div class="nod">Sem eventos</div>';
-    else h+='<div class="rows">'+evs.map(e=>evRow(e,iso)).join("")+pr.map(r=>'<div class="row plan"><span class="tm">€<br>paga</span><span class="dot" style="background:'+secColor(r.section)+'"></span><span class="t"><span class="d">'+esc(r.desc)+'</span><br><span class="m">Pagamento · '+esc(secName(r.section))+'</span></span><span class="a">'+money(r.cents||0)+'</span></div>').join("")+'</div>';
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+function agPayments(a,b){
+  const pay={};if(!st.agPay)return pay;
+  const ks=[a.slice(0,7),b.slice(0,7)].filter((k,i,x)=>x.indexOf(k)===i);
+  D("recurring").forEach(r=>ks.forEach(k=>occ(r,k).forEach(d=>{if(d>=a&&d<=b)(pay[d]=pay[d]||[]).push(r)})));
+  return pay;
+}
+function agDayBlock(iso,who,pay,big){
+  const t=todayISO(),evs=dayEvents(iso,who),pr=pay[iso]||[];
+  let h=big?'':'<div class="dayh'+(iso===t?" today":"")+'"><span>'+esc(longDay(iso))+'</span>'+(iso===t?'<span class="tag">hoje</span>':'')+'</div>';
+  if(!evs.length&&!pr.length)return h+'<div class="nod">Sem eventos</div>';
+  return h+'<div class="rows">'+evs.map(e=>evRow(e,iso)).join("")+pr.map(r=>'<div class="row plan"><span class="tm">€<br>paga</span><span class="dot" style="background:'+secColor(r.section)+'"></span><span class="t"><span class="d">'+esc(r.desc)+'</span><br><span class="m">Pagamento · '+esc(secName(r.section))+'</span></span><span class="a">'+money(r.cents||0)+'</span></div>').join("")+'</div>';
+}
+function agMonthGrid(key,who){
+  const first=key+"-01",pp=parts(first),n=dim(pp.y,pp.m),t=todayISO();
+  let h='<div class="tg">'+["S","T","Q","Q","S","S","D"].map(x=>'<div class="h">'+x+'</div>').join("");
+  for(let i=0;i<dow(first);i++)h+='<span></span>';
+  for(let d=1;d<=n;d++){
+    const iso=key+"-"+pad(d),evs=dayEvents(iso,who),ppl=[];
+    evs.forEach(e=>{if(ppl.indexOf(e.person)<0)ppl.push(e.person)});
+    h+='<button class="tgd'+(iso===t?" today":"")+(evs.length?" has":"")+'" data-agmday="'+iso+'" aria-label="'+esc(longDay(iso)+(evs.length?", "+evs.length+" evento(s)":""))+'"><span>'+d+'</span><span class="dots">'+ppl.slice(0,3).map(p=>'<i style="background:'+pColor(p)+'"></i>').join("")+'</span></button>';
   }
+  return h+'</div><p class="info">Toque num dia para ver os eventos desse dia.</p>';
+}
+function viewAgenda(){
+  const v=st.agView,who=st.agWho,L='<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',R='<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
+  let h='<div class="chips" role="group" aria-label="Vista">'+[["day","Dia"],["week","Semana"],["month","Mês"]].map(x=>'<button class="chip" data-agv="'+x[0]+'" aria-pressed="'+(v===x[0])+'">'+x[1]+'</button>').join("")+'</div>';
+  const nav=(a,lab)=>'<div class="weeknav"><button class="iconbtn" data-'+a+'="-1" aria-label="Anterior">'+L+'</button><div class="m">'+esc(lab)+'</div><button class="iconbtn" data-'+a+'="1" aria-label="Seguinte">'+R+'</button><button class="btn sm" data-'+a+'="0">Hoje</button></div>';
+  if(v==="day")h+=nav("agd",cap(longDay(st.agDay)));
+  else if(v==="month")h+=nav("agm",cap(monthLabel(st.agMonth)));
+  else h+=nav("wk",fmtDM(st.weekStart)+" a "+fmtDM(addDays(st.weekStart,6)));
+  h+='<div class="chips" role="group" aria-label="Filtrar por pessoa"><button class="chip" data-agwho="all" aria-pressed="'+(who==="all")+'">Todos</button>'+cfg().sections.map(s=>'<button class="chip" data-agwho="'+esc(s.id)+'" aria-pressed="'+(who===s.id)+'"><i class="dot" style="display:inline-block;margin-right:6px;background:'+secColor(s.id)+'"></i>'+esc(s.name)+'</button>').join("")+'<button class="chip" data-agpay="1" aria-pressed="'+st.agPay+'">Pagamentos €</button></div>';
+  if(v==="day")return h+agDayBlock(st.agDay,who,agPayments(st.agDay,st.agDay),true);
+  if(v==="month")return h+agMonthGrid(st.agMonth,who);
+  const ws=st.weekStart,pay=agPayments(ws,addDays(ws,6));
+  for(let i=0;i<7;i++)h+=agDayBlock(addDays(ws,i),who,pay,false);
   return h;
 }
 
@@ -505,8 +568,8 @@ function viewCarros(){
     '<div class="tile"><div class="l">Custo por km</div><div class="v">'+(span>0?nf(totalC/100/span,3):"–")+'</div><div class="l">€/km</div></div>'+
     '<div class="tile"><div class="l">Gasto este mês</div><div class="v">'+money(monthC)+'</div><div class="l">'+esc(monthName(mk))+'</div></div></div>';
   h+='<div class="btnrow"><button class="btn pri sm" data-addfuel="1">+ '+(u==="kWh"?"Carregamento":"Abastecimento")+'</button><button class="btn sm" data-addsvc="1">+ Manutenção</button><button class="btn sm" data-addrem="1">+ Lembrete</button><button class="btn sm" data-editcar="1">Editar carro</button></div>';
-  const rem=(car.reminders||[]).slice().sort((a,b)=>a.date<b.date?-1:1);
-  if(rem.length)h+='<h2>Prazos e lembretes</h2><div class="rows">'+rem.map(r=>{const n=daysUntil(r.date);return '<button class="row" data-rem="'+esc(r.id)+'"><span class="dot" style="background:'+(n<0?"var(--warn)":n<=30?"var(--c3)":"var(--accent)")+'"></span><span class="t"><span class="d">'+esc(r.label)+'</span><br><span class="m">'+fmtDMY(r.date)+'</span></span><span class="a" style="color:'+(n<0?"var(--warn)":"inherit")+'">'+(n<0?"há "+(-n)+" d":n===0?"hoje":"em "+n+" d")+'</span></button>'}).join("")+'</div>';
+  const rem=(car.reminders||[]).map(r=>Object.assign({},r,{date:remDate(r)})).sort((a,b)=>a.date<b.date?-1:1);
+  if(rem.length)h+='<h2>Prazos e lembretes</h2><div class="rows">'+rem.map(r=>{const n=daysUntil(r.date);return '<button class="row" data-rem="'+esc(r.id)+'"><span class="dot" style="background:'+(n<0?"var(--warn)":n<=30?"var(--c3)":"var(--accent)")+'"></span><span class="t"><span class="d">'+esc(r.label)+'</span><br><span class="m">'+fmtDMY(r.date)+(r.yearly?' · todos os anos':'')+'</span></span><span class="a" style="color:'+(n<0?"var(--warn)":"inherit")+'">'+(n<0?"há "+(-n)+" d":n===0?"hoje":"em "+n+" d")+'</span></button>'}).join("")+'</div>';
   h+='<h2>Histórico</h2>';
   if(!log.length)return h+'<div class="empty">Ainda sem registos. Toque em «+ '+(u==="kWh"?"Carregamento":"Abastecimento")+'».</div>';
   return h+'<div class="rows">'+log.map(l=>{
@@ -522,7 +585,7 @@ function viewCompras(){
   const todo=items.filter(i=>!i.done).length;
   let h=subHead("Lista de compras")+'<div class="add" style="margin:0 0 12px"><input type="text" id="sh-in" maxlength="60" placeholder="Adicionar (ex.: leite, pão)" autocomplete="off" aria-label="Novo item"><button class="btn pri" data-shadd="1">Adicionar</button></div>';
   if(!items.length)return h+'<div class="empty"><strong>Lista vazia</strong>Escreva acima o que falta comprar. Todos veem a mesma lista.</div>';
-  h+='<div class="rows">'+items.map(i=>'<button class="shop'+(i.done?" done":"")+'" data-sh="'+esc(i.id)+'"><span class="ck">'+(i.done?"✓":"")+'</span><span class="tx">'+esc(i.text)+'</span>'+(i.pending?'<span class="tag w">a enviar</span>':'')+'</button>').join("")+'</div>';
+  h+='<div class="rows">'+items.map(i=>'<div class="shopw"><button class="shop'+(i.done?" done":"")+'" data-sh="'+esc(i.id)+'"><span class="ck">'+(i.done?"✓":"")+'</span><span class="tx">'+esc(i.text)+'</span>'+(i.pending?'<span class="tag w">a enviar</span>':'')+'</button><button class="shdel" data-shdel="'+esc(i.id)+'" aria-label="Remover '+esc(i.text)+'">×</button></div>').join("")+'</div>';
   h+='<div class="btnrow">'+(items.some(i=>i.done)?'<button class="btn sm" data-shclear="1">Limpar comprados</button>':'')+'<button class="btn sm" data-shexp="1">Anotar a despesa das compras</button></div><p class="info">'+todo+' por comprar.</p>';
   return h;
 }
@@ -847,7 +910,8 @@ function openEvent(ev,opt){
   const base=ev?Object.assign({},ev):{};
   if(single){base.date=single;base.repeat="none";base.until=""}
   const persons=[["todos","Todos"]].concat(cfg().sections.map(s=>[s.id,s.name]));
-  const defDate=(st.weekStart<=todayISO()&&todayISO()<=addDays(st.weekStart,6))?todayISO():st.weekStart;
+  const t0=todayISO();
+  const defDate=st.agView==="day"?st.agDay:st.agView==="month"?(t0.slice(0,7)===st.agMonth?t0:st.agMonth+"-01"):((st.weekStart<=t0&&t0<=addDays(st.weekStart,6))?t0:st.weekStart);
   showSheet({
     title:single?"Só neste dia ("+fmtDM(single)+")":ev?"Editar evento":"Novo evento",
     fields:[{k:"title",l:"O que é",t:"text",v:base.title||"",p:"ex.: Sai da escola, Treino, Consulta"},
@@ -945,13 +1009,14 @@ function openService(car,item){
 function openReminder(car,rem){
   if(!car)return;
   showSheet({title:rem?"Editar lembrete":"Novo lembrete",
-    fields:[{k:"label",l:"O que não esquecer",t:"text",v:rem?rem.label:"",p:"ex.: Seguro, IPO, IUC, Revisão",list:["Seguro","IPO","IUC","Revisão","Pneus","Cartão verde"]},{k:"date",l:"Data limite",t:"date",v:rem?rem.date:""}],
+    fields:[{k:"label",l:"O que não esquecer",t:"text",v:rem?rem.label:"",p:"ex.: Seguro, IPO, IUC, Revisão",list:["Seguro","IPO","IUC","Revisão","Pneus","Cartão verde"]},{k:"date",l:"Data limite",t:"date",v:rem?rem.date:""},{k:"yearly",l:"Repete todos os anos (a data avança sozinha)",t:"check",v:rem?!!rem.yearly:false}],
     intro:"Aparece no Resumo 30 dias antes do prazo.",
+    extra:rem?{label:"Adicionar ao meu calendário",fn:()=>icsDeliver("lembrete.ics",[icsVevent({uid:rem.id,title:rem.label+" · "+car.name,date:rem.date,repeat:rem.yearly?"yearly":"none",alarms:["-P7D","-P1D"]})])}:null,
     onDelete:rem?()=>{st.db.collection("cars").doc(car.id).update({reminders:(car.reminders||[]).filter(r=>r.id!==rem.id)}).catch(wfail);toast("Apagado")}:null,
     onSave:v=>{
       if(!v.label)return "Escreva o que não esquecer.";
       if(!v.date)return "Indique a data limite.";
-      const list=(car.reminders||[]).filter(r=>!rem||r.id!==rem.id).concat([{id:rem?rem.id:newId(),label:v.label,date:v.date}]);
+      const list=(car.reminders||[]).filter(r=>!rem||r.id!==rem.id).concat([{id:rem?rem.id:newId(),label:v.label,date:v.date,yearly:!!v.yearly}]);
       st.db.collection("cars").doc(car.id).update({reminders:list}).catch(wfail);toast("Guardado");return null;
     }});
 }
@@ -1022,6 +1087,15 @@ document.addEventListener("click",e=>{
   if(ds.tsm!=null){const n=+ds.tsm;st.tsMonth=n===0?todayISO().slice(0,7):shiftMonth(st.tsMonth,n);render();return}
   if(ds.tsday){onTestDay(ds.tsday);return}
   if(ds.test){const x=D("tests").find(y=>y.id===ds.test);if(x)openTest(x);return}
+  if(ds.agv){
+    const from=st.agView,to=ds.agv,t=todayISO();
+    const base=from==="week"?((t>=st.weekStart&&t<=addDays(st.weekStart,6))?t:st.weekStart):from==="day"?st.agDay:(t.slice(0,7)===st.agMonth?t:st.agMonth+"-01");
+    st.agDay=base;st.weekStart=mondayOf(base);st.agMonth=base.slice(0,7);st.agView=to;render();return;
+  }
+  if(ds.agd!=null){const n=+ds.agd;st.agDay=n===0?todayISO():addDays(st.agDay,n);render();return}
+  if(ds.agm!=null){const n=+ds.agm;st.agMonth=n===0?todayISO().slice(0,7):shiftMonth(st.agMonth,n);render();return}
+  if(ds.agmday){st.agDay=ds.agmday;st.agView="day";render();window.scrollTo(0,0);return}
+  if(ds.ctype){st.chartType=ds.ctype;render();return}
   if(ds.agwho){st.agWho=ds.agwho;render();return}
   if(ds.agpay){st.agPay=!st.agPay;render();return}
   if(ds.ev){onEv(ds.ev,ds.d);return}
@@ -1036,6 +1110,7 @@ document.addEventListener("click",e=>{
   if(ds.log){const c=selCar(),l=D("carlog").find(x=>x.id===ds.log);if(l)(l.type==="fuel"?openFuel:openService)(c,l);return}
   if(ds.shadd){addShopping();return}
   if(ds.sh){const i=D("shopping").find(x=>x.id===ds.sh);if(i)st.db.collection("shopping").doc(i.id).update({done:!i.done}).catch(wfail);return}
+  if(ds.shdel){st.db.collection("shopping").doc(ds.shdel).delete().catch(wfail);toast("Removido");return}
   if(ds.shclear){const b=st.fs.batch();D("shopping").filter(i=>i.done).forEach(i=>b.delete(st.db.collection("shopping").doc(i.id)));b.commit().catch(wfail);return}
   if(ds.shexp){openForm("e",null,{desc:"Compras",category:"super"});return}
   if(ds.gdep||ds.gwd||ds.gedit){const g=D("goals").find(x=>x.id===(ds.gdep||ds.gwd||ds.gedit));if(g){if(ds.gedit)openGoal(g);else openMove(g,ds.gdep?1:-1)}return}
