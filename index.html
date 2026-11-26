@@ -398,12 +398,13 @@ function lineChart(key,who,joint){
     return {id,cum,total:cum[last],color:id==="_all"?"var(--accent)":secColor(id),name:id==="_all"?"Todos":secName(id)};
   }).filter(s=>s.total>0);
   if(!series.length)return '<div class="card" style="padding:14px 16px"><p class="info" style="margin:0">Ainda não há gastos neste mês.</p></div>';
-  const W=320,H=200,L=44,R=12,T=14,B=26,pw=W-L-R,ph=H-T-B;
+  const W=320,H=222,L=54,R=12,T=14,B=44,pw=W-L-R,ph=H-T-B;
   const ymax=Math.max.apply(null,series.map(s=>s.total))*1.08;
   const X=d=>L+(d-1)/(n-1)*pw,Y=v=>T+ph*(1-v/ymax);
   let svg="";
   [0,0.5,1].forEach(f=>{const v=ymax/1.08*f,y=Y(v);svg+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" style="stroke:var(--line)"/><text x="'+(L-6)+'" y="'+(y+3.5).toFixed(1)+'" text-anchor="end" font-size="10" style="fill:var(--muted)">'+esc(eur0.format(v/100))+'</text>'});
-  [1,5,10,15,20,25,n].filter((d,i,a)=>a.indexOf(d)===i&&(d===n||n-d>=3)).forEach(d=>{svg+='<text x="'+X(d).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" style="fill:var(--muted)">'+d+'</text>'});
+  [1,5,10,15,20,25,n].filter((d,i,a)=>a.indexOf(d)===i&&(d===n||n-d>=3)).forEach(d=>{svg+='<text x="'+X(d).toFixed(1)+'" y="'+(H-24)+'" text-anchor="middle" font-size="10" style="fill:var(--muted)">'+d+'</text>'});
+  svg+='<text x="'+(L+pw/2).toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" font-size="11" font-weight="600" style="fill:var(--muted)">Dias</text><text transform="rotate(-90 11 '+(T+ph/2).toFixed(1)+')" x="11" y="'+(T+ph/2+4).toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="600" style="fill:var(--muted)">Montante</text>';
   if(cur)svg+='<line x1="'+X(last).toFixed(1)+'" x2="'+X(last).toFixed(1)+'" y1="'+T+'" y2="'+(T+ph)+'" stroke-dasharray="3 3" style="stroke:var(--line)"/>';
   series.forEach(s=>{
     let p="";for(let d=1;d<=last;d++)p+=(d===1?"M":"L")+X(d).toFixed(1)+" "+Y(s.cum[d]).toFixed(1);
